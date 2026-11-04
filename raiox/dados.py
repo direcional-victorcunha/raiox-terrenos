@@ -135,9 +135,17 @@ def garantir_area(bbox: tuple[float, float, float, float], folga_m: float = 300.
     pasta = pasta_dados()
     alvo = lotes_wfs.quadrados_do_bbox(minx - folga, miny - folga, maxx + folga, maxy + folga)
     faltam = [q for q in alvo if not lotes_wfs.caminho_quadrado(pasta, *q).exists()]
-    for n, (ix, iy) in enumerate(faltam):
+    if not faltam:
+        return 0
+    from concurrent.futures import ThreadPoolExecutor
+
+    def um(item: tuple[int, tuple[int, int]]) -> None:
+        n, (ix, iy) = item
         cb = (lambda qtd, n=n: _aviso_download("lotes", n, len(faltam), qtd)) if _aviso_download else None
         lotes_wfs.baixar_quadrado(pasta, ix, iy, cb)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:  # 2 quadrados de cada vez; cada um com a sua pausa de 1 s
+        list(pool.map(um, enumerate(faltam)))
     return len(faltam)
 
 
@@ -347,6 +355,30 @@ def garantir_camada(camada: str, bbox: tuple[float, float, float, float]) -> int
         )
     except camadas_wfs.CamadaNaoExiste as exc:
         raise CamadaAusente(str(exc)) from exc
+
+
+def pre_baixar_camadas(pares: list[tuple[str, float]], bbox: tuple[float, float, float, float]) -> None:
+    """Modo instalado: baixa várias camadas ao mesmo tempo (3 por vez) antes de lê-las uma a uma.
+
+    ``pares`` = (camada, margem em metros). Falhas ficam para quem ler a camada (``feicoes``), que as
+    trata como camada ausente ou erro de rede.
+    """
+    if not modo_instalado() or len(pares) < 2:
+        return
+    from concurrent.futures import ThreadPoolExecutor
+
+    minx, miny, maxx, maxy = bbox
+
+    def um(par: tuple[str, float]) -> None:
+        camada, margem_m = par
+        d = margem_m / 111_000.0
+        try:
+            garantir_camada(camada, (minx - d, miny - d, maxx + d, maxy + d))
+        except Exception:
+            pass
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        list(pool.map(um, pares))
 
 
 def _tabela_camada_instalada(camada: str) -> pa.Table:

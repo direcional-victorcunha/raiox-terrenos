@@ -25,6 +25,7 @@ import shapely.geometry
 
 from raiox.lotes_wfs import LADO_M, PAUSA_S, TENTATIVAS, WFS, quadrados_do_bbox  # noqa: F401
 
+PAUSA_CAMADA_S = 0.3  # entre quadrados de camadas (pedidos curtos, de camadas diferentes)
 LIMITE_FEICOES = 200_000  # por quadrado; bem acima do que se vê (a mancha de inundação tem ~40 mil)
 
 
@@ -78,6 +79,8 @@ def _buscar(camada: str, bbox_m: tuple[float, float, float, float]) -> list[dict
             ultimo = exc
             time.sleep(PAUSA_S * (tentativa + 1))
             continue
+        if b"Bloqueada" in corpo or b"rejeitada" in corpo:  # firewall da prefeitura barrando esta camada
+            raise CamadaNaoExiste(f"O GeoSampa está bloqueando o acesso à camada '{camada}' neste momento.")
         try:
             return json.loads(corpo)["features"]
         except (ValueError, KeyError) as exc:
@@ -154,5 +157,5 @@ def garantir_quadrados(
         if progresso:
             progresso(n, len(faltam), 0)  # avisa antes: o download de um quadrado leva alguns segundos
         baixar_quadrado(pasta_dados, camada, ix, iy)
-        time.sleep(PAUSA_S)
+        time.sleep(PAUSA_CAMADA_S)
     return len(faltam)

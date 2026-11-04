@@ -131,8 +131,8 @@ def _feicoes_validas(
             feats = dados.feicoes(camada, bbox, margem_m=margem_m)
         except dados.CamadaAusente:
             aviso = (
-                f"A camada '{camada}' não está na base baixada: os sinais e a triagem "
-                "que dependem dela ficaram sem essa camada."
+                f"A camada '{camada}' não está disponível (não está na base ou o GeoSampa não a entregou agora): "
+                "os sinais e a triagem que dependem dela ficaram sem essa camada."
             )
             if aviso not in avisos:
                 avisos.append(aviso)
@@ -284,6 +284,15 @@ def calcular(
         )
     for lote in lotes:
         _lotes_cache[lote.cd_identificador] = lote
+
+    # Programa instalado: baixa as camadas que o cálculo vai usar, 3 de cada vez (no PC do autor não faz nada)
+    dados.pre_baixar_camadas(
+        [(_CAMADA_ZONEAMENTO, 300.0)]
+        + [(c, 0.0) for _, camadas, _ in _SOBREPOSICOES for c in camadas]
+        + [(_CAMADA_DUTO, 1000.0), (_CAMADA_ALTA_TENSAO, 1000.0)]
+        + [(c, 5000.0) for c in _CAMADAS_ESTACAO],
+        bbox,
+    )
 
     # Zoneamento (ponto representativo do lote) e CA do cenário
     zonas_feats = _feicoes_validas((_CAMADA_ZONEAMENTO,), bbox, 300.0, avisos)
