@@ -1,0 +1,7 @@
+shapely>=2
+pyproj
+pyarrow
+openpyxl
+pywebview
+pytest
+pandas

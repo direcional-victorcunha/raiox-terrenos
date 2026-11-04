@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Raio-X de Terrenos SP</title>
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <!-- Faixas de dados baixados do GeoSampa (programa instalado) -->
+  <div id="faixa-download" class="faixa-dados faixa-download" role="status" aria-live="polite" hidden></div>
+  <div id="faixa-atualizar" class="faixa-dados faixa-atualizar" hidden>
+    <span id="faixa-atualizar-texto"></span>
+    <button id="faixa-atualizar-sim" class="bt" type="button">Atualizar agora</button>
+    <button id="faixa-atualizar-depois" class="bt" type="button">Depois</button>
+  </div>
+  <!-- TOPO: abas + terreno em foco (compartilhado) + premissas -->
+  <header class="topo">
+    <span class="marca">Raio-X de Terrenos SP</span>
+    <nav class="abas-barra" role="tablist" aria-label="Abas">
+      <button class="aba-botao" type="button" role="tab" data-aba="prospectar" aria-selected="true">Prospectar</button>
+      <button class="aba-botao" type="button" role="tab" data-aba="lote" aria-selected="false">Raio-X do lote</button>
+      <button class="aba-botao" type="button" role="tab" data-aba="simulador" aria-selected="false">Simulador</button>
+    </nav>
+    <div id="foco" class="foco vazio" role="status" aria-live="polite">
+      <span class="foco-rot">Terreno em foco</span>
+      <span id="foco-conteudo" class="foco-conteudo"><span class="foco-meta">nenhum · escolha um lote em qualquer aba</span></span>
+      <span class="foco-acoes">
+        <button id="foco-entorno" class="bt" type="button" disabled title="Círculo em volta do terreno em foco, na aba Prospectar">Ver entorno</button>
+        <button id="foco-raiox" class="bt" type="button" disabled>Raio-X</button>
+        <button id="foco-simular" class="bt" type="button" disabled>Simular</button>
+        <button id="foco-tirar" class="bt bt-icone" type="button" disabled aria-label="Tirar do foco" title="Tirar do foco">×</button>
+      </span>
+    </div>
+    <div id="premissas-rapidas" class="premissas-rapidas" aria-label="Premissas rápidas">
+      <label class="pr-rap-item">Regime
+        <select id="rap-regime" aria-label="Regime rápido">
+          <option value="R2V_LIVRE">R2V livre</option>
+          <option value="EHMP">EHMP</option>
+          <option value="EHIS">EHIS</option>
+        </select>
+      </label>
+      <label class="pr-rap-item">R$/m²
+        <input id="rap-preco" type="text" inputmode="decimal" placeholder="7.000" aria-label="Preço por m² rápido">
+      </label>
+      <label class="pr-rap-item">Meta (R$ mi)
+        <input id="rap-meta" type="text" inputmode="decimal" placeholder="100" aria-label="Meta de VGV em milhões">
+      </label>
+    </div>
+    <label class="escala" title="Tamanho dos textos e painéis (o mapa não muda)">Tamanho
+      <select id="sel-escala" aria-label="Tamanho da interface">
+        <option value="0.85">Pequeno · 85%</option>
+        <option value="0.95">Compacto · 95%</option>
+        <option value="1">Normal · 100%</option>
+        <option value="1.1">Confortável · 110%</option>
+        <option value="1.25">Grande · 125%</option>
+        <option value="1.4">Muito grande · 140%</option>
+      </select>
+    </label>
+    <button id="btn-tema" class="bt bt-icone" type="button" aria-pressed="false" title="Alternar modo claro / escuro">🌙</button>
+    <button id="btn-premissas" class="bt" type="button" aria-expanded="false" aria-controls="gaveta-premissas">⚙ Premissas</button>
+  </header>
+  <div id="comum-erro" class="faixa-erro hidden" role="alert"></div>
+
+  <!-- GAVETA DE PREMISSAS (comum) -->
+  <aside id="gaveta-premissas" class="gaveta hidden" aria-label="Premissas">
+    <div class="gaveta-topo">
+      <h2 class="gaveta-titulo">Premissas <span class="nota">valem para todas as abas</span></h2>
+      <button id="btn-fechar-premissas" class="bt bt-icone" type="button" aria-label="Fechar premissas" title="Fechar">×</button>
+    </div>
+    <div class="gaveta-corpo">
+      <div id="premissas-status" class="msg hidden"></div>
+      <label class="campo">Regime
+        <select id="prem-regime">
+          <option value="R2V_LIVRE">R2V livre</option>
+          <option value="EHMP">EHMP</option>
+          <option value="EHIS">EHIS</option>
+        </select>
+      </label>
+      <label class="chk"><input type="checkbox" id="prem-multiplicador"> Multiplicador de EHIS/EHMP do motor (×1,5 / ×1,25)</label>
+      <p class="nota">Desligado (padrão): CA de EHIS/EHMP = CA da zona, como a sua planilha. Ligado: como o motor antigo.</p>
+      <label class="chk"><input type="checkbox" id="prem-cota-solidariedade"> Cota de solidariedade</label>
+      <label class="chk"><input type="checkbox" id="prem-zeup-ativada"> ZEUP ativada</label>
+      <label class="chk"><input type="checkbox" id="prem-zem-ca4"> ZEM com CA 4</label>
+      <label class="chk"><input type="checkbox" id="prem-acesso-via-estreita"> Acesso por via de até 10 m (só no Raio-X do lote)</label>
+      <label class="chk"><input type="checkbox" id="prem-vila"> Vila (só no Raio-X do lote)</label>
+      <label class="campo">Preço por m² (R$)
+        <input type="text" id="prem-preco-m2" inputmode="decimal" placeholder="não informado">
+      </label>
+      <p class="nota">VGV potencial = área × CA × preço/m² (sem fator privativo).</p>
+      <div id="prem-preco-erro" class="campo-erro hidden"></div>
+      <label class="campo">Ticket da unidade (R$)
+        <input type="text" id="prem-ticket-unidade" inputmode="decimal" placeholder="não informado">
+      </label>
+      <p class="nota">Sem preço/m², o preço sai de ticket ÷ área média.</p>
+      <div id="prem-ticket-erro" class="campo-erro hidden"></div>
+      <label class="campo">Área média da unidade (m²)
+        <input type="text" id="prem-area-media" inputmode="decimal">
+      </label>
+      <p class="nota">Unidades estimadas = área computável ÷ área média.</p>
+      <div id="prem-area-erro" class="campo-erro hidden"></div>
+      <label class="campo">Fator privativo (informativo)
+        <input type="text" id="prem-fator-privativo" inputmode="decimal" placeholder="não informado">
+      </label>
+      <p class="nota">Só mostra a área útil privativa; não muda VGV, unidades nem meta.</p>
+      <div id="prem-fator-erro" class="campo-erro hidden"></div>
+      <label class="campo">Avisar quando cadastro × desenho divergirem mais de (%)
+        <input type="text" id="prem-divergencia" inputmode="decimal">
+      </label>
+      <p class="nota">A conta parte sempre da área do cadastro; o desenho só é comparado (padrão 5%).</p>
+      <div id="prem-divergencia-erro" class="campo-erro hidden"></div>
+    </div>
+  </aside>
+
+  <main id="abas">
+    <!-- ================= ABA PROSPECTAR ================= -->
+    <section id="aba-prospectar" class="aba" data-aba="prospectar" role="tabpanel">
+      <div class="aba-erro hidden" data-erro-aba role="alert"><span class="aba-erro-texto"></span><button type="button" class="aba-erro-fechar bt-icone" aria-label="Fechar">×</button></div>
+      <div class="grade grade-prospectar">
+        <!-- Passos -->
+        <aside id="pr-painel-passos" class="painel passos" aria-label="Passos da prospecção">
+          <div class="painel-topo-flutuante">
+            <span class="painel-rot">Busca e Filtros</span>
+            <button id="pr-seta-passos" class="bt-seta" type="button" aria-expanded="true" title="Suprimir / expandir painel de busca">◀</button>
+          </div>
+          <details id="pr-passo-area" open>
+            <summary><span class="n">1</span><b>Área de busca</b><span class="res" id="pr-res-area">nenhuma</span></summary>
+            <div class="corpo-passo">
+              <p class="nota">Use as ferramentas em cima do mapa: clique e pronto. Ou escolha uma área pronta:</p>
+              <div class="grupo">
+                <span class="grupo-rot">Círculo em volta do terreno em foco</span>
+                <input id="pr-busca" type="text" placeholder="SQL ou endereço do lote" autocomplete="off" aria-label="SQL ou endereço do lote central">
+                <div id="pr-centro-opcoes"></div>
+                <button id="pr-btn-entorno" class="bt pri" type="button" disabled>Calcular o círculo</button>
+              </div>
+              <button id="pr-btn-marechal" class="bt" type="button" title="O mesmo polígono de 1.500 m do app antigo (43,8 km²)">Faixa da Av. Marechal Tito (1.500 m)</button>
+              <div class="grupo">
+                <label class="campo">Regiões salvas
+                  <select id="pr-regioes"><option value="">— nenhuma salva —</option></select>
+                </label>
+                <div class="linha">
+                  <button id="pr-btn-regiao" class="bt" type="button" disabled>Abrir</button>
+                  <button id="pr-btn-excluir-regiao" class="bt" type="button" disabled>Excluir</button>
+                </div>
+                <div id="pr-excluir-confirma" class="confirma hidden" role="alert">
+                  <span id="pr-excluir-texto"></span>
+                  <button id="pr-btn-excluir-sim" class="bt" type="button">Excluir</button>
+                  <button id="pr-btn-excluir-nao" class="bt" type="button">Cancelar</button>
+                </div>
+              </div>
+              <div class="grupo">
+                <label class="campo">Faixa ao longo da rua
+                  <input id="pr-faixa-rua" type="text" placeholder="ex.: AV MAL TITO" autocomplete="off">
+                </label>
+                <div class="linha">
+                  <label class="campo campo-curto">Largura (m)
+                    <input id="pr-faixa-largura" type="text" inputmode="numeric" value="1.500">
+                  </label>
+                  <button id="pr-btn-faixa" class="bt" type="button">Ver faixa</button>
+                </div>
+                <div id="pr-faixa-sugestoes"></div>
+              </div>
+              <input type="file" id="pr-arquivo-kmz" accept=".kmz,.kml" class="hidden">
+              <button id="pr-btn-kmz" class="bt" type="button">Abrir KMZ de região… (ou solte aqui)</button>
+            </div>
+          </details>
+          <details id="pr-passo-meta" open>
+            <summary><span class="n">2</span><b>Meta</b><span class="res" id="pr-res-meta">—</span></summary>
+            <div class="corpo-passo">
+              <label class="campo">Critério
+                <select id="pr-p-criterio">
+                  <option value="vgv">VGV mínimo</option>
+                  <option value="area">Área mínima</option>
+                </select>
+              </label>
+              <label class="campo" data-criterio="vgv">Meta de VGV potencial (R$ milhões)
+                <input id="pr-p-meta" type="text" inputmode="decimal">
+              </label>
+              <label class="campo hidden" data-criterio="area">Área mínima do lote (m²)
+                <input id="pr-p-area-min" type="text" inputmode="decimal">
+              </label>
+              <label class="campo">Preço por m² (R$)
+                <input id="pr-p-preco" type="text" inputmode="decimal" placeholder="não informado">
+              </label>
+              <p class="nota">VGV potencial = área × CA × preço/m², sem fator privativo. Sem preço, use o ticket em ⚙ Premissas.</p>
+              <p id="pr-p-cortes" class="nota"></p>
+            </div>
+          </details>
+          <details id="pr-passo-filtros">
+            <summary><span class="n">3</span><b>Filtros e triagem</b><span class="res" id="pr-res-filtros">—</span></summary>
+            <div class="corpo-passo">
+              <label class="campo">Área máxima do lote (m²)
+                <input id="pr-p-area-max" type="text" inputmode="decimal">
+              </label>
+              <p class="nota">Acima disto o lote fica escondido (cinza, com o motivo).</p>
+              <label class="campo">Esconder só se a sobreposição for de ao menos (%)
+                <input id="pr-p-limite" type="text" inputmode="decimal">
+              </label>
+              <p class="nota">O sinal aparece a partir de 10%; o lote só some acima deste limite e com a caixa marcada.</p>
+              <div id="pr-p-triagem" class="lista-chk"></div>
+              <label class="chk"><input type="checkbox" id="pr-p-duplas"> Calcular duplas (2 lotes)</label>
+              <label class="chk"><input type="checkbox" id="pr-p-trincas"> Calcular trincas (3 lotes)</label>
+              <label class="campo">Divisa mínima entre lotes: <b id="pr-p-divisa-valor"></b> m
+                <input id="pr-p-divisa" type="range" min="0" max="60" step="5">
+              </label>
+              <p class="nota">0 = basta encostar. A trinca só aparece quando nenhuma dupla dentro dela já bate a meta.</p>
+              <p class="nota">As caixas “via de até 10 m” e “vila” (⚙ Premissas) não se aplicam aqui: o cadastro não traz a via nem a vila de cada lote.</p>
+            </div>
+          </details>
+          <div id="pr-p-erro" class="campo-erro hidden"></div>
+        </aside>
+
+        <!-- Mapa com as ferramentas -->
+        <section class="painel mapa-painel" aria-label="Mapa">
+          <div id="pr-mapa" class="mapa ferr-lote"></div>
+          <div class="ferr" role="toolbar" aria-label="Ferramentas do mapa">
+            <button type="button" data-ferramenta="lote" aria-pressed="true">Escolher lote <kbd>L</kbd></button>
+            <button type="button" data-ferramenta="raio" aria-pressed="false">Marcar raio <kbd>R</kbd></button>
+            <button type="button" data-ferramenta="desenho" aria-pressed="false">Desenhar área <kbd>D</kbd></button>
+          </div>
+          <div class="ferr-opcoes" aria-label="Opções da ferramenta ativa">
+            <span id="pr-raio-controle" class="dica-raio hidden">
+              <label for="pr-raio-range">Raio</label>
+              <input id="pr-raio-range" type="range" min="100" max="5000" step="100" value="1500">
+              <input id="pr-raio" class="num-input" type="text" inputmode="numeric" aria-label="Raio em metros">
+              <span class="num" id="pr-raio-km2"></span>
+            </span>
+            <span id="pr-desenho-controle" class="dica-desenho hidden">
+              <button id="pr-btn-desfazer-ponto" class="bt" type="button" disabled>Desfazer ponto</button>
+              <button id="pr-btn-limpar-desenho" class="bt" type="button" disabled>Limpar</button>
+              <input id="pr-desenho-nome" type="text" placeholder="salvar como região (nome, opcional)" autocomplete="off" aria-label="Nome para salvar a área como região">
+              <button id="pr-btn-fechar-area" class="bt pri" type="button" disabled>Fechar e calcular</button>
+            </span>
+          </div>
+          <div class="mapa-camadas">
+            <button id="pr-btn-camadas" class="bt" type="button" aria-expanded="false" aria-controls="pr-camadas-painel">Camadas</button>
+            <div id="pr-camadas-painel" class="camadas-painel hidden">
+              <div id="pr-camadas-erro" class="campo-erro hidden"></div>
+              <label class="chk"><input type="checkbox" id="pr-chk-satelite" checked> Fundo de satélite</label>
+              <div class="grupo-rot">Ver no mapa</div>
+              <div id="pr-camadas-ver" class="lista-chk"></div>
+            </div>
+          </div>
+          <div id="pr-carregando" class="carregando hidden" role="status"><span class="giro" aria-hidden="true"></span><span id="pr-carregando-texto">Calculando…</span></div>
+          <div class="avisos-mapa">
+            <div id="pr-tile-aviso" class="aviso-mapa hidden">Sem fundo de satélite (sem internet?)</div>
+            <div id="pr-mapa-aviso" class="aviso-mapa hidden"></div>
+            <div id="pr-todos-aviso" class="aviso-mapa hidden"></div>
+          </div>
+          <div id="pr-legenda" class="pilha-bl" aria-label="Legenda das camadas ligadas e escala">
+            <div class="leg-caixa hidden"></div>
+            <div class="leg-escala"></div>
+          </div>
+          <div class="dica" id="pr-dica">
+            <span id="pr-dica-texto" class="dica-texto"></span>
+            <span id="pr-area-info" class="dica-area"></span>
+          </div>
+        </section>
+
+        <!-- Detalhe do selecionado -->
+        <aside id="pr-painel-detalhe" class="painel detalhe-envelope recolhido" aria-label="Detalhe do selecionado">
+          <div class="painel-topo-flutuante">
+            <button id="pr-seta-detalhe" class="bt-seta" type="button" aria-expanded="false" title="Suprimir / expandir detalhe">◀</button>
+            <span class="painel-rot">Selecionado</span>
+          </div>
+          <div id="pr-detalhe" class="detalhe" aria-live="polite">
+            <p class="vazio-painel">Clique num lote no mapa (ferramenta <kbd>L</kbd>) ou numa linha da tabela para ver o detalhe aqui.</p>
+          </div>
+        </aside>
+
+        <!-- Resultados -->
+        <section id="pr-painel-resultados" class="painel resultados" aria-label="Resultados">
+          <div class="res-topo">
+            <button id="pr-seta-resultados" class="bt-seta" type="button" aria-expanded="true" title="Suprimir / expandir tabela de resultados">▼</button>
+            <div class="contadores" role="group" aria-label="Filtrar por tipo">
+              <button type="button" class="filtro" data-tipo="lote" aria-pressed="false"><i class="cor-lote"></i><span data-rotulo>Lotes que batem a meta</span> <b data-n="lotes">0</b></button>
+              <button type="button" class="filtro" data-tipo="dupla" aria-pressed="false"><i class="cor-dupla"></i>Duplas <b data-n="duplas">0</b></button>
+              <button type="button" class="filtro" data-tipo="trinca" aria-pressed="false"><i class="cor-trinca"></i>Trincas <b data-n="trincas">0</b></button>
+              <button type="button" class="filtro" data-tipo="escondidos" aria-pressed="false"><i class="cor-esc"></i>Escondidos <b data-n="escondidos">0</b></button>
+            </div>
+            <select id="pr-filtro-zona" aria-label="Filtrar por zona"><option value="">Zona: todas</option></select>
+            <select id="pr-filtro-uso" aria-label="Filtrar por uso"><option value="">Uso: todos</option></select>
+            <div class="modo" role="group" aria-label="Modo de exibição">
+              <button type="button" data-modo="oportunidades" aria-pressed="true">Só oportunidades</button>
+              <button type="button" data-modo="todos" aria-pressed="false">Todos os lotes</button>
+            </div>
+            <label class="chk"><input type="checkbox" id="pr-ver-todas"> <span id="pr-ver-todas-rotulo">Ver todas</span></label>
+            <span class="paginas">
+              <button id="pr-pag-ant" class="bt bt-icone" type="button" disabled aria-label="Página anterior">‹</button>
+              <span id="pr-pag-info" class="nota"></span>
+              <button id="pr-pag-prox" class="bt bt-icone" type="button" disabled aria-label="Próxima página">›</button>
+            </span>
+            <button id="pr-btn-csv" class="bt" type="button" disabled>CSV</button>
+            <button id="pr-btn-kmz-entorno" class="bt" type="button" disabled title="Área grande pode levar alguns minutos">KMZ do entorno</button>
+          </div>
+          <div id="pr-entorno-msg" class="msg hidden"></div>
+          <div class="tabela-container">
+            <table class="tabela">
+              <thead>
+                <tr id="pr-tabela-cabecalho">
+                  <th data-ordem="tipo">Tipo</th>
+                  <th data-ordem="sql">SQL</th>
+                  <th data-ordem="endereco">Endereço</th>
+                  <th data-ordem="area_m2" class="n">Área (m²)</th>
+                  <th data-ordem="zonas">Zona</th>
+                  <th data-ordem="ca" class="n">CA</th>
+                  <th data-ordem="area_computavel_m2" class="n">Potencial (m²)</th>
+                  <th data-ordem="unidades" class="n">Unid. (est.)</th>
+                  <th data-ordem="vgv" class="n">VGV potencial</th>
+                  <th data-ordem="uso">Uso</th>
+                  <th data-ordem="estacao">Estação</th>
+                  <th data-ordem="dist_estacao_m" class="n">Dist. (m)</th>
+                  <th data-ordem="pct_construido" class="n">Construído</th>
+                  <th data-ordem="sinais">Sinais</th>
+                  <th data-ordem="uso_porte">Uso e porte (motor antigo)</th>
+                  <th data-ordem="escondido_por">Escondido por</th>
+                </tr>
+              </thead>
+              <tbody id="pr-tabela-corpo"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ================= ABA RAIO-X DO LOTE ================= -->
+    <section id="aba-lote" class="aba hidden" data-aba="lote" role="tabpanel">
+      <div class="aba-erro hidden" data-erro-aba role="alert"><span class="aba-erro-texto"></span><button type="button" class="aba-erro-fechar bt-icone" aria-label="Fechar">×</button></div>
+      <div class="grade grade-lote">
+        <section class="painel mapa-painel" aria-label="Quarteirão do terreno em foco">
+          <div id="lt-mapa" class="mapa"></div>
+          <div class="mapa-camadas">
+            <button id="lt-btn-camadas" class="bt" type="button" aria-expanded="false" aria-controls="lt-camadas-painel">Camadas</button>
+            <div id="lt-camadas-painel" class="camadas-painel hidden">
+              <div id="lt-camadas-erro" class="campo-erro hidden"></div>
+              <label class="chk"><input type="checkbox" id="lt-chk-satelite" checked> Fundo de satélite</label>
+              <div class="grupo-rot">Ver no mapa</div>
+              <div id="lt-camadas-ver" class="lista-chk"></div>
+            </div>
+          </div>
+          <div id="lt-carregando" class="carregando hidden" role="status"><span class="giro" aria-hidden="true"></span><span>Abrindo o Raio-X…</span></div>
+          <div id="lt-mapa-vazio" class="mapa-vazio">Nenhum terreno em foco. Escolha um lote no <b>Prospectar</b> ou busque por SQL/endereço ao lado.</div>
+          <div class="avisos-mapa">
+            <div id="lt-tile-aviso" class="aviso-mapa hidden">Sem fundo de satélite (sem internet?)</div>
+            <div id="lt-mapa-aviso" class="aviso-mapa hidden"></div>
+          </div>
+          <div class="dica"><span id="lt-dica" class="dica-texto">Só o quarteirão do terreno em foco. Para ver o entorno, use <b>Ver entorno</b> na barra do foco.</span></div>
+        </section>
+        <aside id="lt-cartoes" class="painel cartoes" aria-label="Raio-X do lote">
+          <div class="bloco">
+            <label class="campo"><span id="lt-busca-rotulo">SQL, endereço ou KMZ do terreno</span>
+              <input id="lt-busca" type="text" placeholder="ex.: Av Mal Tito 7455" autocomplete="off">
+            </label>
+            <input type="file" id="lt-arquivo-kmz" accept=".kmz,.kml" class="hidden">
+            <button id="lt-btn-kmz" class="bt" type="button">Abrir KMZ do terreno…</button>
+          </div>
+          <div id="lt-composicao"></div>
+          <div id="lt-mensagem" class="msg hidden"></div>
+          <div id="lt-resultado"></div>
+          <div id="lt-retirar-bloco" class="bloco">
+            <h3>Retirar do lote</h3>
+            <div id="lt-camadas-retirar" class="lista-chk"></div>
+          </div>
+          <div class="bloco">
+            <h3>Saídas</h3>
+            <div class="botoes">
+              <button id="lt-btn-resumo" class="bt" type="button" disabled>Copiar resumo</button>
+              <button id="lt-btn-excel" class="bt" type="button" disabled>Excel</button>
+              <button id="lt-btn-exportar-kmz" class="bt" type="button" disabled>KMZ</button>
+              <button id="lt-btn-croqui" class="bt" type="button" disabled>Croqui</button>
+              <button id="lt-btn-pasta" class="bt" type="button">Abrir pasta</button>
+              <button id="lt-btn-simular" class="bt pri" type="button" disabled title="Abre o Simulador com o terreno em foco (área líquida com as retiradas marcadas)">Simular</button>
+            </div>
+            <div id="lt-acoes-msg" class="msg hidden"></div>
+            <div id="lt-clipboard-reserva" class="reserva-clip hidden">
+              <textarea id="lt-textarea-resumo" readonly aria-label="Resumo para copiar"></textarea>
+              <p class="nota">Não consegui copiar sozinha: selecione e use Ctrl+C.</p>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ================= ABA SIMULADOR ================= -->
+    <section id="aba-simulador" class="aba hidden" data-aba="simulador" role="tabpanel">
+      <div class="aba-erro hidden" data-erro-aba role="alert"><span class="aba-erro-texto"></span><button type="button" class="aba-erro-fechar bt-icone" aria-label="Fechar">×</button></div>
+      <div class="grade grade-sim">
+        <aside class="painel cartoes sm-parametros" aria-label="Terreno e parâmetros">
+          <div class="bloco">
+            <h3>Terreno em foco</h3>
+            <div id="sm-terreno"><p class="vazio-painel">Nenhum terreno em foco. Escolha um no Prospectar ou no Raio-X; ele aparece aqui já preenchido. Ou busque:</p></div>
+            <div class="linha">
+              <input id="sm-busca" type="text" placeholder="SQL, endereço ou identificador" autocomplete="off" aria-label="Terreno a simular">
+              <button id="sm-btn-buscar" class="bt" type="button">Buscar</button>
+            </div>
+            <div id="sm-candidatos"></div>
+          </div>
+          <form id="sm-form" class="sm-form hidden" novalidate></form>
+          <div id="sm-form-acoes" class="sm-form-acoes hidden">
+            <button id="sm-btn-simular" class="bt pri" type="button">Simular</button>
+            <button id="sm-btn-iniciais" class="bt" type="button">Valores iniciais</button>
+          </div>
+        </aside>
+        <section class="painel cartoes sm-resultado-painel" aria-label="Resultado da simulação" aria-live="polite">
+          <div id="sm-mensagem" class="msg hidden"></div>
+          <div id="sm-resultado"><p class="vazio-painel">Escolha um terreno; os parâmetros aparecem à esquerda. Confira e clique em “Simular”.</p></div>
+          <div class="bloco">
+            <h3>Saídas</h3>
+            <div class="botoes">
+              <button id="sm-btn-resumo" class="bt" type="button" disabled>Copiar resumo da simulação</button>
+              <button id="sm-btn-excel" class="bt" type="button" disabled>Excel da simulação</button>
+              <button id="sm-btn-pasta" class="bt" type="button">Abrir pasta</button>
+            </div>
+            <div id="sm-acoes-msg" class="msg hidden"></div>
+            <div id="sm-clipboard-reserva" class="reserva-clip hidden">
+              <textarea id="sm-textarea-resumo" readonly aria-label="Resumo da simulação para copiar"></textarea>
+              <p class="nota">Não consegui copiar sozinha: selecione e use Ctrl+C.</p>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <!-- MODAL DO CROQUI (aba Raio-X do lote) -->
+  <div id="modal-croqui" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-croqui-titulo">
+    <div class="modal-cartao">
+      <div class="modal-topo">
+        <h2 id="modal-croqui-titulo">Croqui do terreno</h2>
+        <button id="btn-fechar-croqui" class="bt bt-icone" type="button" aria-label="Fechar croqui">×</button>
+      </div>
+      <div id="modal-croqui-corpo" class="modal-corpo"></div>
+    </div>
+  </div>
+
+  <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="comum.js"></script>
+  <script src="abas/prospectar.js"></script>
+  <script src="abas/lote.js"></script>
+  <script src="abas/simulador.js"></script>
+</body>
+</html>
