@@ -27,7 +27,7 @@ import zipfile
 import shapely
 import webview
 
-from raiox import atualizacao_dados, camadas, dados, kmz_entrada, oportunidades, zona
+from raiox import atualizacao_dados, atualizacao_programa, camadas, dados, kmz_entrada, oportunidades, zona
 from raiox.area_util import area_computavel
 from raiox.entorno import TRIAGEM
 from raiox.tipos import Premissas
@@ -515,6 +515,25 @@ class Comum:
         if not dados.modo_instalado():
             return {"instalado": False, "antigos": 0, "total": 0}
         return {"instalado": True, **atualizacao_dados.situacao(dados.pasta_dados())}
+
+    def programa_verificar(self) -> dict[str, Any]:
+        """Há versão nova do programa no GitHub? (só no programa empacotado; falha de rede = não há)."""
+        info = atualizacao_programa.verificar()
+        return {"nova": info}
+
+    def programa_atualizar(self) -> dict[str, Any]:
+        """Baixa a versão nova, prepara a troca e fecha a janela; um script copia e reabre o programa."""
+        info = atualizacao_programa.verificar()
+        if info is None:
+            return {"trocando": False, "motivo": "Não há versão nova."}
+        if not info["pode_trocar"]:
+            return {"trocando": False, "motivo": "Sem permissão para trocar os arquivos aqui.", "pagina": info["pagina"]}
+        nova = atualizacao_programa.baixar(info)
+        atualizacao_programa.iniciar_troca(atualizacao_programa.aplicar(nova))
+        if self._window is not None:
+            janela = self._window
+            threading.Timer(0.5, janela.destroy).start()
+        return {"trocando": True, "versao": info["versao"]}
 
     def dados_atualizar(self) -> dict[str, Any]:
         """Baixa de novo, a pedido do usuário, o que passou de 30 dias."""

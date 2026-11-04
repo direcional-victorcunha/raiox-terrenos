@@ -178,6 +178,40 @@
     setTimeout(() => { if (chamadasPendentes <= 0) f.hidden = true; }, 7000);
   }
 
+  // Versão nova do programa no GitHub (só no programa empacotado). Nunca atualiza sozinho.
+  async function avisoVersaoNova() {
+    const faixa = document.getElementById("faixa-versao");
+    if (!faixa) return;
+    const r = await chamar("programa_verificar");
+    if (!r.ok || !r.nova) return;
+    document.getElementById("faixa-versao-texto").textContent =
+      "Há uma versão nova do Raio-X (" + r.nova.versao + ")." + (r.nova.notas ? " " + r.nova.notas : "");
+    faixa.style.top = "40px";
+    faixa.hidden = false;
+    document.getElementById("faixa-versao-depois").onclick = () => { faixa.hidden = true; };
+    document.getElementById("faixa-versao-sim").onclick = async () => {
+      if (!r.nova.pode_trocar) { document.getElementById("faixa-versao-texto").textContent = "Este programa está numa pasta protegida. Baixe a versão nova em " + r.nova.pagina; return; }
+      document.getElementById("faixa-versao-texto").textContent = "Baixando a versão nova… o programa vai fechar e abrir sozinho.";
+      const res = await chamar("programa_atualizar");
+      if (!res.ok || !res.trocando) document.getElementById("faixa-versao-texto").textContent = "Não consegui atualizar: " + (res.erro || res.motivo || "tente de novo mais tarde.");
+    };
+  }
+
+  // Programa instalado: sem o cadastro da cidade, a busca por endereço some e o atalho da Marechal Tito
+  // (polígono que só existe no PC do autor) também.
+  function aplicarModoInstalado() {
+    document.body.classList.add("instalado");
+    window.RaioX.instalado = true;
+    const troca = (id, atributo, texto) => { const e = document.getElementById(id); if (e) e[atributo] = texto; };
+    const pr = document.getElementById("pr-busca");
+    if (pr) { pr.placeholder = "SQL do lote (só em áreas já abertas)"; pr.setAttribute("aria-label", "SQL do lote central"); }
+    const sm = document.getElementById("sm-busca");
+    if (sm) { sm.placeholder = "SQL ou identificador (áreas já abertas)"; sm.setAttribute("aria-label", "Terreno a simular"); }
+    troca("lt-busca-rotulo", "textContent", "SQL ou KMZ do terreno");
+    const vazio = document.getElementById("lt-mapa-vazio");
+    if (vazio) vazio.innerHTML = "Nenhum terreno em foco. Escolha um lote no <b>Prospectar</b> (marque um ponto no mapa, desenhe a área ou solte um KMZ).";
+  }
+
   // Aviso (nunca automático): dados baixados há mais de 30 dias.
   async function avisoDadosAntigos() {
     const faixa = document.getElementById("faixa-atualizar");
@@ -1168,6 +1202,7 @@
   async function aoPonteProntas() {
     const modo = await chamar("modo");
     const emAutoteste = Boolean(modo.ok && modo.autoteste);
+    if (modo.ok && modo.instalado) aplicarModoInstalado();
     const res = await chamar("ler_premissas");
     if (res.ok) {
       premissas = res.premissas;
@@ -1189,7 +1224,7 @@
     for (const nome of abas.keys()) chamarGancho(nome, "aoPonteProntas");
     if (premissas) for (const nome of abas.keys()) chamarGancho(nome, "aoMudarPremissas", "carga");
 
-    if (!emAutoteste) avisoDadosAntigos();
+    if (!emAutoteste) { avisoDadosAntigos(); avisoVersaoNova(); }
     if (emAutoteste) await autoteste();
   }
 
@@ -1211,6 +1246,7 @@
   });
 
   window.RaioX = {
+    instalado: false,
     el, fmt, COR, formatarSQL, parsearNumeroDigitado, mostrarMsg, esconderMsg, mensagemDeErro, carregandoLinha, listaOpcoes,
     chamar, registrarAba, pedir, ativarAba, criarMapa, lerArquivoBase64,
     premissas: {

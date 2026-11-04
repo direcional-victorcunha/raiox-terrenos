@@ -510,3 +510,6 @@ body.tema-escuro .leaflet-tooltip { background: var(--superficie); color: var(--
 .faixa-dados[hidden] { display: none; }
 .faixa-download { bottom: 14px; }
 .faixa-atualizar { top: 8px; }
+
+/* Programa instalado: o atalho da Marechal Tito depende de um polígono que só existe no PC do autor */
+body.instalado #pr-btn-marechal { display: none; }

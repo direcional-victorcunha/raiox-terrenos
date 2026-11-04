@@ -567,7 +567,7 @@
     // --- Busca e botões ---
     function aoBuscar() {
       const texto = inputBusca.value.trim();
-      if (!texto) { mensagem("Digite um SQL, endereço ou identificador.", "erro"); return undefined; }
+      if (!texto) { mensagem(window.RaioX.instalado ? "Digite um SQL ou identificador." : "Digite um SQL, endereço ou identificador.", "erro"); return undefined; }
       return buscar(texto);
     }
     inputBusca.addEventListener("keydown", ctx.proteger((e) => {

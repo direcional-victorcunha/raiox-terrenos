@@ -261,7 +261,8 @@
 
     function renderizarComposicao() {
       composicaoEl.replaceChildren();
-      rotuloBusca.textContent = foco ? "Buscar outro terreno (SQL, endereço ou KMZ)" : "SQL, endereço ou KMZ do terreno";
+      const busca = window.RaioX.instalado ? "SQL ou KMZ" : "SQL, endereço ou KMZ";
+      rotuloBusca.textContent = foco ? "Buscar outro terreno (" + busca + ")" : busca + " do terreno";
       if (!foco || foco.ids.length < 2) return;
       const b = bloco((foco.tipo === "dupla" ? "Dupla" : "Trinca") + " em foco: o Raio-X é de um lote por vez");
       const linha = el("div", "composicao");

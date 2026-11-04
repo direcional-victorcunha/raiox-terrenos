@@ -59,6 +59,9 @@ class Api:
                 retorno = funcao()
         except ErroUsuario as exc:
             return {"ok": False, "erro": f"{exc}{self._registrar(aba, acao, exc)}", "aba": aba.nome}
+        except ConnectionError as exc:  # sem internet / GeoSampa fora do ar: a mensagem já é para o usuário
+            self._registrar(aba, acao, exc)
+            return {"ok": False, "erro": str(exc), "aba": aba.nome}
         except Exception as exc:  # envelope: nenhum erro de uma aba pode derrubar a janela
             sufixo = self._registrar(aba, acao, exc)
             mensagem = (
@@ -124,6 +127,14 @@ class Api:
 
     def dados_estado(self) -> dict[str, Any]:
         return self._executar(self._comum, "ver a idade dos dados", self._comum.dados_estado)
+
+    def programa_verificar(self) -> dict[str, Any]:
+        return self._executar(self._comum, "ver se há versão nova", self._comum.programa_verificar)
+
+    def programa_atualizar(self) -> dict[str, Any]:
+        return self._executar(
+            self._comum, "atualizar o programa", self._comum.programa_atualizar, trava=self._comum._trava_mapa
+        )
 
     def dados_atualizar(self) -> dict[str, Any]:
         return self._executar(
@@ -365,7 +376,18 @@ def main() -> None:
         action="store_true",
         help="Abre a janela, confere as abas e a ponte, grava %%TEMP%%\\raiox_autoteste.json e fecha",
     )
+    parser.add_argument(
+        "--diagnostico",
+        action="store_true",
+        help="Sem janela: baixa uma área pequena do GeoSampa, confere a leitura e grava %%TEMP%%\raiox_diagnostico.json",
+    )
     args = parser.parse_args()
+
+    if args.diagnostico:
+        from raiox import diagnostico
+
+        diagnostico.main()
+        return
 
     api = Api(autoteste=args.autoteste)
     index_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ui", "index.html")
